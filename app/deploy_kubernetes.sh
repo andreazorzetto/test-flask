@@ -4,14 +4,6 @@
 AWS_REGION=${AWS_REGION:-"us-east-1"}
 ECR_REPOSITORY="flask-app"
 IMAGE_TAG="latest"
-EC2_INSTANCE_IP=$1  # Pass EC2 instance public IP as first argument
-
-# Check if EC2 IP is provided
-if [ -z "$EC2_INSTANCE_IP" ]; then
-    echo "Error: EC2 instance IP is required."
-    echo "Usage: $0 <ec2_instance_ip>"
-    exit 1
-fi
 
 # Build Docker image
 echo "Building Docker image..."
@@ -31,9 +23,6 @@ docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
 
 # Deploy to Kubernetes
 echo "Deploying to Kubernetes..."
-
-# Update Kubernetes config files with EC2 instance IP
-sed -i "s/\${EC2_INSTANCE_IP}/$EC2_INSTANCE_IP/g" deployment.yaml
 
 # Replace the ECR repository placeholder with the local image if not using ECR
 sed -i "s|\${AWS_ACCOUNT_ID}.dkr.ecr.\${AWS_REGION}.amazonaws.com/flask-app:latest|flask-app:latest|g" deployment.yaml

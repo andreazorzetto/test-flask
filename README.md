@@ -68,10 +68,10 @@ The solution consists of:
    secret.yaml
    deploy_kubernetes.sh
    ```
-4. Deploy to Kubernetes:
+4Edit the configmap with the IP address of the EC2 instance and deploy the app:
    ```bash
    chmod +x deploy_kubernetes.sh
-   ./deploy_kubernetes.sh <ec2-instance-public-ip>
+   ./deploy_kubernetes.sh
    ```
 5. Wait for the LoadBalancer to get an external IP:
    ```bash
