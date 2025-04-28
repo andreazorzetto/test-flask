@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app
+  labels:
+    app: flask-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flask-app
+  template:
+    metadata:
+      labels:
+        app: flask-app
+    spec:
+      containers:
+      - name: flask-app
+        image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/flask-app:latest
+        # If you're using a locally built image instead of ECR, use:
+        # image: flask-app:latest
+        # imagePullPolicy: Never
+        ports:
+        - containerPort: 5000
+        env:
+        - name: EC2_INSTANCE_IP
+          value: "${EC2_INSTANCE_IP}"  # Replace with actual EC2 public IP or DNS
+        - name: EC2_PORT
+          value: "8000"
+        - name: AUTH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: flask-app-auth
+              key: username
+        - name: AUTH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: flask-app-auth
+              key: password
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
