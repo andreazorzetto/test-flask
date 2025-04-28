@@ -1,8 +1,16 @@
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, request, Response, render_template, send_from_directory, redirect, url_for
 import os
 import json
 import requests
 from functools import wraps
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -31,14 +39,298 @@ def require_auth(f):
 
 @app.route('/')
 def home():
-    return jsonify({
-        "status": "ok",
-        "message": "Flask application running successfully"
-    })
+    """Home page with links to dashboard and scan results"""
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Container Security Scanner</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            h1 {
+                color: #2c5282;
+            }
+            .card {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                padding: 20px;
+                margin-bottom: 20px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            a {
+                display: inline-block;
+                background-color: #4299e1;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 4px;
+                text-decoration: none;
+                margin-right: 10px;
+                margin-top: 10px;
+            }
+            a:hover {
+                background-color: #3182ce;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Container Security Scanner</h1>
+        <div class="card">
+            <h2>Python 3.9-slim Image Security Scanner</h2>
+            <p>This application provides security scanning results for the Python 3.9-slim Docker image.</p>
+            <a href="/dashboard">View Dashboard</a>
+            <a href="/scan">View Scan Results</a>
+            <a href="/status">View API Status</a>
+        </div>
+    </body>
+    </html>
+    '''
+
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Kubernetes probes"""
+    return jsonify({"status": "healthy"})
+
+
+@app.route('/dashboard')
+def dashboard():
+    """Dashboard view with vulnerability statistics"""
+    return '''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Container Security Dashboard</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                background-color: #f9fafb;
+                margin: 0;
+                padding: 0;
+            }
+            .header {
+                background-color: #1a56db;
+                color: white;
+                padding: 1rem;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 1rem;
+            }
+            .card {
+                background-color: white;
+                border-radius: 0.5rem;
+                padding: 1.5rem;
+                box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+                margin-bottom: 1.5rem;
+            }
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            .stat-card {
+                background-color: white;
+                border-radius: 0.5rem;
+                padding: 1.5rem;
+                box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            }
+            .stat-title {
+                font-size: 0.875rem;
+                color: #4b5563;
+                margin-bottom: 0.5rem;
+            }
+            .stat-value {
+                font-size: 1.875rem;
+                font-weight: 700;
+                color: #111827;
+            }
+            .charts-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+                gap: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            .loading {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 300px;
+            }
+            .loading-spinner {
+                border: 4px solid rgba(0, 0, 0, 0.1);
+                border-left-color: #1a56db;
+                border-radius: 50%;
+                width: 36px;
+                height: 36px;
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin {
+                to { transform: rotate(360deg); }
+            }
+            .alert {
+                padding: 1rem;
+                border-radius: 0.5rem;
+                margin-bottom: 1rem;
+            }
+            .alert-error {
+                background-color: #fee2e2;
+                color: #b91c1c;
+            }
+            .alert-success {
+                background-color: #d1fae5;
+                color: #047857;
+            }
+            .alert-warning {
+                background-color: #fffbeb;
+                color: #d97706;
+            }
+            .btn {
+                display: inline-block;
+                background-color: #1a56db;
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 0.25rem;
+                text-decoration: none;
+                font-weight: 500;
+                transition: background-color 0.2s;
+            }
+            .btn:hover {
+                background-color: #1e429f;
+            }
+            @media (max-width: 768px) {
+                .charts-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="container">
+                <h1 class="text-2xl font-bold">Container Security Dashboard</h1>
+                <p>Python 3.9-slim Docker Image Vulnerability Analysis</p>
+            </div>
+        </div>
+
+        <div class="container" id="dashboard-root">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+
+        <script>
+            // Fetch vulnerability data
+            async function fetchVulnerabilityData() {
+                try {
+                    const response = await fetch('/status');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.error('Error fetching vulnerability data:', error);
+                    return null;
+                }
+            }
+
+            // Format timestamp
+            function formatTimestamp(timestamp) {
+                if (!timestamp || timestamp === 'unknown') return 'Unknown';
+                try {
+                    return new Date(timestamp).toLocaleString();
+                } catch (e) {
+                    return timestamp;
+                }
+            }
+
+            // Render dashboard
+            async function renderDashboard() {
+                const dashboardRoot = document.getElementById('dashboard-root');
+                const data = await fetchVulnerabilityData();
+
+                if (!data) {
+                    dashboardRoot.innerHTML = `
+                        <div class="alert alert-error">
+                            <h3 class="font-bold">Error</h3>
+                            <p>Failed to load vulnerability data. Please check your connection and try again.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Process data
+                const severityDistribution = data.vulnerability_counts || data.severity_distribution || {};
+                const timestamp = formatTimestamp(data.scan_timestamp || data.scan_time);
+                const totalVulns = data.total_vulnerabilities || 0;
+                const criticalHighCount = (severityDistribution.Critical || 0) + (severityDistribution.High || 0);
+                const fixableCount = data.fixable_vulnerabilities || 0;
+
+                dashboardRoot.innerHTML = `
+                    <div class="my-4">
+                        <h2 class="text-xl font-bold">Scan Results</h2>
+                        <p class="text-gray-600">Last scan: ${timestamp}</p>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-title">Total Vulnerabilities</div>
+                            <div class="stat-value">${totalVulns}</div>
+                        </div>
+                        <div class="stat-card ${criticalHighCount > 0 ? 'bg-red-50' : 'bg-green-50'}">
+                            <div class="stat-title">Critical/High Vulnerabilities</div>
+                            <div class="stat-value">${criticalHighCount}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-title">Fixable Vulnerabilities</div>
+                            <div class="stat-value">${fixableCount || 'N/A'}</div>
+                        </div>
+                    </div>
+
+                    <div class="card ${criticalHighCount > 0 ? 'bg-red-50' : 'bg-green-50'}">
+                        <h3 class="text-lg font-semibold mb-2">Security Recommendation</h3>
+                        <p>${criticalHighCount > 0 ? 
+                            'Critical or high severity vulnerabilities have been detected. Immediate action is recommended to address these issues.' : 
+                            'No critical or high severity vulnerabilities detected. Continue regular scanning and monitoring to maintain security.'
+                        }</p>
+                        <div class="mt-4">
+                            <a href="/scan" class="btn">View Detailed Report</a>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-2">Vulnerability Breakdown</h3>
+                        <ul>
+                            ${Object.entries(severityDistribution).map(([severity, count]) => 
+                                `<li><strong>${severity}:</strong> ${count} vulnerabilities</li>`
+                            ).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            // Initialize dashboard
+            document.addEventListener('DOMContentLoaded', renderDashboard);
+        </script>
+    </body>
+    </html>
+    '''
 
 
 @app.route('/status')
 def status():
+    """API endpoint for vulnerability statistics"""
     try:
         # Get vulnerability statistics from EC2 instance
         response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/stats")
@@ -74,12 +366,14 @@ def status():
             else:
                 return jsonify({"error": f"Failed to fetch scan results: {response.status_code}"}), 500
     except Exception as e:
+        logger.error(f"Error generating status: {str(e)}")
         return jsonify({"error": f"Error generating status: {str(e)}"}), 500
 
 
 @app.route('/scan', methods=['GET'])
 @require_auth
 def get_scan_results():
+    """Protected endpoint for full vulnerability scan details"""
     try:
         # Get scan results from EC2 instance
         response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/results")
@@ -410,381 +704,14 @@ def get_scan_results():
         else:
             return jsonify({"error": f"Failed to fetch scan results: {response.status_code}"}), 500
     except Exception as e:
-        return jsonify({"error": f"Error fetching scan results: {str(e)}"}), 500 @ app.route('/dashboard')
-
-
-def dashboard():
-    return '''
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Container Security Dashboard</title>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                background-color: #f9fafb;
-                margin: 0;
-                padding: 0;
-            }
-            .header {
-                background-color: #1a56db;
-                color: white;
-                padding: 1rem;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            }
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 1rem;
-            }
-            .card {
-                background-color: white;
-                border-radius: 0.5rem;
-                padding: 1.5rem;
-                box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-                margin-bottom: 1.5rem;
-            }
-            .stats-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 1rem;
-                margin-bottom: 1.5rem;
-            }
-            .stat-card {
-                background-color: white;
-                border-radius: 0.5rem;
-                padding: 1.5rem;
-                box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            }
-            .stat-title {
-                font-size: 0.875rem;
-                color: #4b5563;
-                margin-bottom: 0.5rem;
-            }
-            .stat-value {
-                font-size: 1.875rem;
-                font-weight: 700;
-                color: #111827;
-            }
-            .charts-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-                gap: 1rem;
-                margin-bottom: 1.5rem;
-            }
-            .loading {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 300px;
-            }
-            .loading-spinner {
-                border: 4px solid rgba(0, 0, 0, 0.1);
-                border-left-color: #1a56db;
-                border-radius: 50%;
-                width: 36px;
-                height: 36px;
-                animation: spin 1s linear infinite;
-            }
-            @keyframes spin {
-                to { transform: rotate(360deg); }
-            }
-            .alert {
-                padding: 1rem;
-                border-radius: 0.5rem;
-                margin-bottom: 1rem;
-            }
-            .alert-error {
-                background-color: #fee2e2;
-                color: #b91c1c;
-            }
-            .alert-success {
-                background-color: #d1fae5;
-                color: #047857;
-            }
-            .alert-warning {
-                background-color: #fffbeb;
-                color: #d97706;
-            }
-            .btn {
-                display: inline-block;
-                background-color: #1a56db;
-                color: white;
-                padding: 0.5rem 1rem;
-                border-radius: 0.25rem;
-                text-decoration: none;
-                font-weight: 500;
-                transition: background-color 0.2s;
-            }
-            .btn:hover {
-                background-color: #1e429f;
-            }
-            @media (max-width: 768px) {
-                .charts-grid {
-                    grid-template-columns: 1fr;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div class="container">
-                <h1 class="text-2xl font-bold">Container Security Dashboard</h1>
-                <p>Python 3.9-slim Docker Image Vulnerability Analysis</p>
-            </div>
-        </div>
-
-        <div class="container" id="dashboard-root">
-            <div class="loading">
-                <div class="loading-spinner"></div>
-            </div>
-        </div>
-
-        <script>
-            // Fetch vulnerability data
-            async function fetchVulnerabilityData() {
-                try {
-                    const response = await fetch('/status');
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! Status: ${response.status}`);
-                    }
-                    return await response.json();
-                } catch (error) {
-                    console.error('Error fetching vulnerability data:', error);
-                    return null;
-                }
-            }
-
-            // Format timestamp
-            function formatTimestamp(timestamp) {
-                if (!timestamp || timestamp === 'unknown') return 'Unknown';
-                try {
-                    return new Date(timestamp).toLocaleString();
-                } catch (e) {
-                    return timestamp;
-                }
-            }
-
-            // Render dashboard
-            async function renderDashboard() {
-                const dashboardRoot = document.getElementById('dashboard-root');
-                const data = await fetchVulnerabilityData();
-
-                if (!data) {
-                    dashboardRoot.innerHTML = `
-                        <div class="alert alert-error">
-                            <h3 class="font-bold">Error</h3>
-                            <p>Failed to load vulnerability data. Please check your connection and try again.</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                // Process data
-                const severityDistribution = data.vulnerability_counts || data.severity_distribution || {};
-                const timestamp = formatTimestamp(data.scan_timestamp || data.scan_time);
-                const totalVulns = data.total_vulnerabilities || 0;
-                const criticalHighCount = (severityDistribution.Critical || 0) + (severityDistribution.High || 0);
-                const fixableCount = data.fixable_vulnerabilities || 0;
-
-                dashboardRoot.innerHTML = `
-                    <div class="my-4">
-                        <h2 class="text-xl font-bold">Scan Results</h2>
-                        <p class="text-gray-600">Last scan: ${timestamp}</p>
-                    </div>
-
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-title">Total Vulnerabilities</div>
-                            <div class="stat-value">${totalVulns}</div>
-                        </div>
-                        <div class="stat-card ${criticalHighCount > 0 ? 'bg-red-50' : 'bg-green-50'}">
-                            <div class="stat-title">Critical/High Vulnerabilities</div>
-                            <div class="stat-value">${criticalHighCount}</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-title">Fixable Vulnerabilities</div>
-                            <div class="stat-value">${fixableCount || 'N/A'}</div>
-                        </div>
-                    </div>
-
-                    <div class="card ${criticalHighCount > 0 ? 'bg-red-50' : 'bg-green-50'}">
-                        <h3 class="text-lg font-semibold mb-2">Security Recommendation</h3>
-                        <p>${criticalHighCount > 0 ? 
-                            'Critical or high severity vulnerabilities have been detected. Immediate action is recommended to address these issues.' : 
-                            'No critical or high severity vulnerabilities detected. Continue regular scanning and monitoring to maintain security.'
-                        }</p>
-                        <div class="mt-4">
-                            <a href="/scan" class="btn">View Detailed Report</a>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <h3 class="text-lg font-semibold mb-2">Vulnerability Breakdown</h3>
-                        <ul>
-                            ${Object.entries(severityDistribution).map(([severity, count]) => 
-                                `<li><strong>${severity}:</strong> ${count} vulnerabilities</li>`
-                            ).join('')}
-                        </ul>
-                    </div>
-                `;
-            }
-
-            // Initialize dashboard
-            document.addEventListener('DOMContentLoaded', renderDashboard);
-        </script>
-    </body>
-    </html>
-    '''
-    from flask import Flask, jsonify, request, Response, render_template, send_from_directory
-
-
-import os
-import json
-import requests
-from functools import wraps
-
-app = Flask(__name__)
-
-# Configuration
-EC2_INSTANCE_IP = os.environ.get('EC2_INSTANCE_IP', 'localhost')
-EC2_PORT = os.environ.get('EC2_PORT', '8000')
-AUTH_USERNAME = os.environ.get('AUTH_USERNAME', 'admin')
-AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD', 'secure_password')
-
-
-# Basic authentication decorator
-def require_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not (auth.username == AUTH_USERNAME and auth.password == AUTH_PASSWORD):
-            return Response(
-                'Authentication required',
-                401,
-                {'WWW-Authenticate': 'Basic realm="Login Required"'}
-            )
-        return f(*args, **kwargs)
-
-    return decorated
-
-
-@app.route('/')
-def home():
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Container Security Scanner</title>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-            }
-            h1 {
-                color: #2c5282;
-            }
-            .card {
-                background-color: #f8f9fa;
-                border-radius: 8px;
-                padding: 20px;
-                margin-bottom: 20px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            a {
-                display: inline-block;
-                background-color: #4299e1;
-                color: white;
-                padding: 10px 15px;
-                border-radius: 4px;
-                text-decoration: none;
-                margin-right: 10px;
-                margin-top: 10px;
-            }
-            a:hover {
-                background-color: #3182ce;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Container Security Scanner</h1>
-        <div class="card">
-            <h2>Python 3.9-slim Image Security Scanner</h2>
-            <p>This application provides security scanning results for the Python 3.9-slim Docker image.</p>
-            <a href="/dashboard">View Dashboard</a>
-            <a href="/scan">View Scan Results</a>
-            <a href="/status">View API Status</a>
-        </div>
-    </body>
-    </html>
-    '''
-
-
-@app.route('/status')
-def status():
-    try:
-        # Get vulnerability statistics from EC2 instance
-        response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/stats")
-
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            # Fallback to manual calculation if stats endpoint is not available
-            response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/results")
-
-            if response.status_code == 200:
-                scan_data = response.json()
-
-                # Count vulnerabilities by severity
-                vuln_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Negligible": 0, "Unknown": 0}
-
-                for match in scan_data.get('matches', []):
-                    severity = match.get('vulnerability', {}).get('severity', '').capitalize()
-                    if severity in vuln_counts:
-                        vuln_counts[severity] += 1
-                    else:
-                        vuln_counts["Unknown"] += 1
-
-                # Get scan timestamp if available
-                timestamp = scan_data.get('timestamp', 'Unknown')
-
-                return jsonify({
-                    "scan_time": timestamp,
-                    "vulnerability_counts": vuln_counts,
-                    "total_vulnerabilities": sum(vuln_counts.values()),
-                    "critical_high_count": vuln_counts["Critical"] + vuln_counts["High"]
-                })
-            else:
-                return jsonify({"error": f"Failed to fetch scan results: {response.status_code}"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Error generating status: {str(e)}"}), 500
-
-
-@app.route('/scan', methods=['GET'])
-@require_auth
-def get_scan_results():
-    try:
-        # Get scan results from EC2 instance
-        response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/results")
-
-        if response.status_code == 200:
-            scan_data = response.json()
-            return jsonify(scan_data)
-        else:
-            return jsonify({"error": f"Failed to fetch scan results: {response.status_code}"}), 500
-    except Exception as e:
+        logger.error(f"Error fetching scan results: {str(e)}")
         return jsonify({"error": f"Error fetching scan results: {str(e)}"}), 500
 
 
 @app.route('/sbom', methods=['GET'])
 @require_auth
 def get_sbom():
+    """Protected endpoint for SBOM data"""
     try:
         # Get SBOM from EC2 instance
         response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/sbom")
@@ -795,12 +722,53 @@ def get_sbom():
         else:
             return jsonify({"error": f"Failed to fetch SBOM: {response.status_code}"}), 500
     except Exception as e:
+        logger.error(f"Error fetching SBOM: {str(e)}")
         return jsonify({"error": f"Error fetching SBOM: {str(e)}"}), 500
 
 
-@app.route('/health')
-def health_check():
-    return jsonify({"status": "healthy"})
+@app.route('/api/scan', methods=['GET'])
+@require_auth
+def api_scan_results():
+    """JSON API endpoint for scan results (for programmatic access)"""
+    try:
+        response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/results")
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": f"Failed to fetch scan results: {response.status_code}"}), 500
+    except Exception as e:
+        logger.error(f"Error in API scan endpoint: {str(e)}")
+        return jsonify({"error": f"Error fetching scan results: {str(e)}"}), 500
+
+
+@app.route('/api/critical-high', methods=['GET'])
+@require_auth
+def api_critical_high():
+    """JSON API endpoint for critical and high vulnerabilities only"""
+    try:
+        response = requests.get(f"http://{EC2_INSTANCE_IP}:{EC2_PORT}/critical-high")
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": f"Failed to fetch critical/high vulnerabilities: {response.status_code}"}), 500
+    except Exception as e:
+        logger.error(f"Error in API critical-high endpoint: {str(e)}")
+        return jsonify({"error": f"Error fetching critical/high vulnerabilities: {str(e)}"}), 500
+
+
+@app.errorhandler(404)
+def page_not_found(e):
+    """Handle 404 errors"""
+    return jsonify({"error": "Resource not found"}), 404
+
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    """Handle 500 errors"""
+    logger.error(f"Internal server error: {str(e)}")
+    return jsonify({"error": "Internal server error"}), 500
 
 
 if __name__ == '__main__':

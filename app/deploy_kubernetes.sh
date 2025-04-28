@@ -31,6 +31,7 @@ sed -i "s/# imagePullPolicy: Never/imagePullPolicy: Never/g" deployment.yaml
 
 # Apply Kubernetes configuration
 kubectl apply -f secret.yaml
+kubectl apply -f configmap.yaml
 kubectl apply -f deployment.yaml
 kubectl apply -f service.yaml
 
