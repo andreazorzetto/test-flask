@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flask-app-config
+data:
+  AUTH_USERNAME: "admin"  # Replace with your desired username (or use Secret for production)
+  EC2_PORT: "8000"

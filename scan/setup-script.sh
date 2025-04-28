@@ -40,6 +40,21 @@ cp scan_image.py ~/docker-scan/
 cp ec2_server.py ~/docker-scan/
 chmod +x ~/docker-scan/scan_image.py
 
+# Create a directory for templates
+mkdir -p ~/docker-scan/templates
+mkdir -p ~/docker-scan/static
+
+# Create a configuration file for the EC2 server
+cat << EOF > ~/docker-scan/config.json
+{
+  "scan_results_path": "vulnerability_scan.json",
+  "sbom_path": "sbom.json",
+  "critical_high_vulns_path": "critical_high_vulns.json",
+  "port": 8000,
+  "allowed_origins": ["*"]
+}
+EOF
+
 # Create a systemd service for the EC2 server
 echo "Creating EC2 server service..."
 cat << EOF > /tmp/ec2-server.service

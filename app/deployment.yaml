@@ -26,12 +26,15 @@ spec:
         - name: EC2_INSTANCE_IP
           value: "${EC2_INSTANCE_IP}"  # Replace with actual EC2 public IP or DNS
         - name: EC2_PORT
-          value: "8000"
+          valueFrom:
+            configMapKeyRef:
+              name: flask-app-config
+              key: EC2_PORT
         - name: AUTH_USERNAME
           valueFrom:
-            secretKeyRef:
-              name: flask-app-auth
-              key: username
+            configMapKeyRef:
+              name: flask-app-config
+              key: AUTH_USERNAME
         - name: AUTH_PASSWORD
           valueFrom:
             secretKeyRef:

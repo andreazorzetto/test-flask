@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Container Security Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.5.0/Recharts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f9fafb;
+            margin: 0;
+            padding: 0;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 300px;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #1a56db;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .alert {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .alert-error {
+            background-color: #fee2e2;
+            color: #b91c1c;
+        }
+        .alert-success {
+            background-color: #d1fae5;
+            color: #047857;
+        }
+        .alert-warning {
+            background-color: #fffbeb;
+            color: #d97706;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #1a56db;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #1e429f;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1 class="text-2xl font-bold">Container Security Dashboard</h1>
+            <p>Python 3.9-slim Docker Image Vulnerability Analysis</p>
+        </div>
+    </div>
+
+    <div class="container" id="dashboard-root">
+        <div class="loading">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch vulnerability data
+        async function fetchVulnerabilityData() {
+            try {
+                const response = await fetch('/status');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching vulnerability data:', error);
+                return null;
+            }
+        }
+
+        // Format timestamp
+        function formatTimestamp(timestamp) {
+            if (!timestamp || timestamp === 'unknown') return 'Unknown';
+            try {
+                return new Date(timestamp).toLocaleString();
+            } catch (e) {
+                return timestamp;
+            }
+        }
+
+        // Render dashboard
+        async function renderDashboard() {
+            const dashboardRoot = document.getElementById('dashboard-root');
+            const data = await fetchVulnerabilityData();
+
+            if (!data) {
+                dashboardRoot.innerHTML = `
+                    <div class="alert alert-error">
+                        <h3 class="font-bold">Error</h3>
+                        <p>Failed to load vulnerability data. Please check your connection and try again.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Process data
+            const severityDistribution = data.severity_distribution || {};
+            const topPackages = data.top_vulnerable_packages || {};
+            const timestamp = formatTimestamp(data.scan_timestamp || data.scan_time);
+            const totalVulns = data.total_vulnerabilities || 0;
+            const criticalHighCount = (severityDistribution.Critical || 0) + (severityDistribution.High || 0);
+            const fixableCount = data.fixable_vulnerabilities || 0;
+
+            dashboardRoot.innerHTML = `
+                <div class="my-4">
+                    <h2 class="text-xl font-bold">Scan Results</h2>
+                    <p class="text-gray-600">Last scan: ${timestamp}</p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-title">Total Vulnerabilities</div>
+                        <div class="stat-value">${totalVulns}</div>
+                    </div>
+                    <div class="stat-card ${criticalHighCount > 0 ? 'bg-red-50' : 'bg-green-50'}">
+                        <div class="stat-title">Critical/High Vulnerabilities</div>
+                        <div class="stat-value">${criticalHighCount}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-title">Fixable Vulnerabilities</div>
+                        <div class="stat-value">${fixableCount}</div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-4">Severity Distribution</h3>
+                        <div id="severity-chart" style="height: 300px;"></div>
+                    </div>
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-4">Top Vulnerable Packages</h3>
+                        <div id="packages-chart" style="height: 300px;"></div>
+                    </div>
+                </div>
+
+                <div class="card ${criticalHighCount > 0 ? 'bg-red-50' : 'bg-green-50'}">
+                    <h3 class="text-lg font-semibold mb-2">Security Recommendation</h3>
+                    <p>${criticalHighCount > 0 ?
+                        'Critical or high severity vulnerabilities have been detected. Immediate action is recommended to address these issues.' :
+                        'No critical or high severity vulnerabilities detected. Continue regular scanning and monitoring to maintain security.'
+                    }</p>
+                    <div class="mt-4">
+                        <a href="/scan" class="btn">View Detailed Report</a>
+                    </div>
+                </div>
+            `;
+
+            // Create severity chart
+            const severityData = Object.entries(severityDistribution).map(([name, value]) => ({
+                name: name.charAt(0).toUpperCase() + name.slice(1),
+                value: value
+            }));
+
+            // Create packages chart
+            const packageData = Object.entries(topPackages)
+                .slice(0, 5)
+                .map(([name, value]) => ({
+                    name: name.length > 15 ? name.substring(0, 12) + '...' : name,
+                    vulnerabilities: value
+                }));
+
+            // Render charts using CDN-loaded libraries
+            // This would be replaced with actual chart rendering code using the loaded libraries
+            document.getElementById('severity-chart').innerText = 'Severity distribution chart would render here using the fetched data';
+            document.getElementById('packages-chart').innerText = 'Top packages chart would render here using the fetched data';
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', renderDashboard);
+    </script>
+</body>
+</html>.header {
+            background-color: #1a56db;
+            color: white;
+            padding: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            margin-bottom: 1.5rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background-color: white;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        }
+        .stat-title {
+            font-size: 0.875rem;
+            color: #4b5563;
+            margin-bottom: 0.5rem;
+        }
+        .stat-value {
+            font-size: 1.875rem;
+            font-weight: 700;
+            color: #111827;
+        }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
